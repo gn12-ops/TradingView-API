@@ -12,7 +12,7 @@ const client = new TradingView.Client();
 const chart = new client.Session.Chart();
 
 let priceHistory = [];
-let liquidityZones = {}; // Price levels where volume concentrates
+let liquidityZones = {};
 
 chart.setMarket('BTCUSD', {
     timeframe: timeframe,
@@ -28,16 +28,25 @@ chart.onSymbolLoaded(() => {
     console.log('─'.repeat(60));
 });
 
-// Function to round price to nearest liquidity level (round numbers)
 function roundToLiquidity(price, precision = 100) {
     return Math.round(price / precision) * precision;
 }
 
-// Function to detect liquidity zones
-function updateLiquidityZones(high, low, close) {
-    const level = roundToLiquidity(close);
+// Analyze historical price data to find liquidity zones
+function analyzePriceHistory() {
+    if (priceHistory.length === 0) return;
 
-    liquidityZones[level] = (liquidityZones[level] || 0) + 1;
+    const newZones = {};
+
+    // Analyze all prices, highs, lows from history
+    priceHistory.forEach(candle => {
+        [candle.price, candle.high, candle.low].forEach(price => {
+            const level = roundToLiquidity(price);
+            newZones[level] = (newZones[level] || 0) + 1;
+        });
+    });
+
+    return newZones;
 }
 
 chart.onUpdate(() => {
@@ -54,7 +63,6 @@ chart.onUpdate(() => {
     const timestamp = new Date().toLocaleTimeString();
 
     priceHistory.push({ price: close, high, low, time: timestamp, open });
-    updateLiquidityZones(high, low, close);
 
     const previousPrice = priceHistory.length > 1
         ? priceHistory[priceHistory.length - 2].price
@@ -66,9 +74,11 @@ chart.onUpdate(() => {
         `${changeSymbol} [${timestamp}] $${close.toFixed(2)} High: $${high.toFixed(2)} Low: $${low.toFixed(2)} (${change > 0 ? '+' : ''}${change}%)`
     );
 
-    // Show liquidity zones every 15 updates
+    // Analyze and show liquidity zones every 15 updates
     if (priceHistory.length % 15 === 0) {
-        console.log(`\n💧 Liquidity Zones (${priceHistory.length} candles):`);
+        liquidityZones = analyzePriceHistory();
+        
+        console.log(`\n💧 Liquidity Zones from ${priceHistory.length} candles:`);
 
         const sortedZones = Object.entries(liquidityZones)
             .sort(([, a], [, b]) => b - a)
@@ -84,14 +94,16 @@ chart.onUpdate(() => {
 });
 
 setTimeout(() => {
-    console.log('\n\n📈 Final Liquidity Report:');
-    console.log(`Total candles: ${priceHistory.length}`);
+    liquidityZones = analyzePriceHistory();
+    
+    console.log('\n\n📈 Final Liquidity Report from Historical Data:');
+    console.log(`Total candles analyzed: ${priceHistory.length}`);
 
     const prices = priceHistory.map(p => p.price);
     console.log(`Highest: $${Math.max(...prices).toFixed(2)}`);
     console.log(`Lowest: $${Math.min(...prices).toFixed(2)}`);
 
-    console.log(`\n💧 Top 10 Liquidity Zones:`);
+    console.log(`\n💧 Top 10 Liquidity Zones from History:`);
     Object.entries(liquidityZones)
         .sort(([, a], [, b]) => b - a)
         .slice(0, 10)
